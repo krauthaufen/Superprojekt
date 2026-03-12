@@ -15,9 +15,10 @@ module View =
                 "const l = document.getElementById('loader');"
                 "if(l) l.remove();"
             ]
-
+            
             renderControl {
                 RenderControl.Samples 1
+                Class "render-control"
 
                 model.DraggingPoint |> AVal.map (fun v ->
                     if Option.isSome v then Some (Style [Css.Cursor "crosshair"])
@@ -25,35 +26,30 @@ module View =
                 )
 
                 let! size = RenderControl.ViewportSize
-                Style [
-                    Width "100%"
-                    Height "100%"
-                    Background "linear-gradient(to top, #051937, #314264, #5d6f95, #8ba1c9, #bbd5ff)"
-                ]
-
+            
                 OrbitController.getAttributes (Env.map CameraMessage env)
-
+            
                 RenderControl.OnRendered(fun _ ->
                     env.Emit [CameraMessage OrbitMessage.Rendered]
                 )
-
+            
                 let proj =
                     size |> AVal.map (fun s ->
                         Frustum.perspective 90.0 0.1 100.0 (float s.X / float s.Y)
                     )
-
+            
                 Sg.View(model.Camera.view |> AVal.map CameraView.viewTrafo)
                 Sg.Proj(proj |> AVal.map Frustum.projTrafo)
-
+            
                 Sg.OnPointerLeave(fun _ ->
                     env.Emit [Hover None]
                 )
-
+            
                 Sg.OnDoubleTap(fun e ->
                     env.Emit [CameraMessage (OrbitMessage.SetTargetCenter(true, AnimationKind.Tanh, e.WorldPosition))]
                     false
                 )
-
+            
                 Sg.OnTap(fun e ->
                     if e.Button = Button.Right then
                         env.Emit [Click e.Position]
@@ -61,28 +57,28 @@ module View =
                     else
                         true
                 )
-
+            
                 Sg.OnLongPress(fun e ->
                     env.Emit [Click e.Position]
                     false
                 )
-
+            
                 Sg.OnPointerMove(fun p ->
                     env.Emit [Hover (Some p.Position)]
                 )
-
+            
                 Sg.Shader {
                     DefaultSurfaces.trafo
                     DefaultSurfaces.simpleLighting
                     Shader.nothing
                 }
-
+            
                 // floor plane
                 sg {
                     Sg.Scale 10.0
                     Primitives.Quad(Quad3d(V3d(-1, -1, 0), V3d(2, 0, 0), V3d(0.0, 2.0, 0.0)), C4b.SandyBrown)
                 }
-
+            
                 // green teapot at origin
                 sg {
                     Sg.Shader {
@@ -92,13 +88,13 @@ module View =
                     }
                     Primitives.Teapot(C4b.Green)
                 }
-
+            
                 // yellow octahedron hovering above the teapot
                 sg {
                     Sg.Translate(0.0, 0.0, 1.0)
                     Primitives.Octahedron(C4b.Yellow)
                 }
-
+            
                 // red hover sphere
                 sg {
                     Sg.Active(model.DraggingPoint |> AVal.map Option.isNone)
@@ -107,7 +103,7 @@ module View =
                     Sg.NoEvents
                     Primitives.Sphere(pos, 0.1, C4b.Red)
                 }
-
+            
                 // drag ghost + placed points
                 sg {
                     // yellow ghost sphere while dragging
@@ -117,7 +113,7 @@ module View =
                         Sg.Active(pos |> AVal.map Option.isSome)
                         Primitives.Sphere(pos |> AVal.map (Option.defaultValue V3d.Zero), 0.1, C4b.Yellow)
                     }
-
+            
                     // interactive green placed spheres
                     model.Points |> AList.mapi (fun idx pos ->
                         sg {
@@ -163,7 +159,7 @@ module View =
                         }
                     )
                 }
-
+            
                 // blue stacked boxes (counter-driven)
                 sg {
                     Sg.NoEvents
@@ -178,40 +174,97 @@ module View =
                 }
             }
 
-            // HUD overlay
+            // HUD overlay — pure-CSS tabs
             div {
-                Style [
-                    Position "fixed"
-                    Top "10px"
-                    Left "10px"
-                ]
-                h1 {
-                    "Counter: "
-                    model.Value |> AVal.map string
+                Class "tabs"
+
+                div {
+                    Class "tab-labels"
+                    // Each label wraps its radio — no `for` attribute needed
+                    label {
+                        input {
+                            Attribute("type",    "radio")
+                            Attribute("name",    "hud-tabs")
+                            Attribute("id",      "hud-tab1")
+                            Attribute("checked", "checked")
+                        }
+                        "Scene"
+                    }
+                    label {
+                        input {
+                            Attribute("type", "radio")
+                            Attribute("name", "hud-tabs")
+                            Attribute("id",   "hud-tab2")
+                        }
+                        "Info"
+                    }
+                    label {
+                        input {
+                            Attribute("type", "radio")
+                            Attribute("name", "hud-tabs")
+                            Attribute("id",   "hud-tab3")
+                        }
+                        "Settings"
+                    }
                 }
-                button {
-                    "+"
-                    Dom.OnClick(fun _ -> env.Emit [Increment])
-                }
-                button {
-                    "-"
-                    Dom.OnClick(fun _ -> env.Emit [Decrement])
-                }
-                button {
-                    "Clear Points"
-                    Dom.OnClick(fun _ -> env.Emit [Clear])
-                }
-                h2 {
-                    model.Hover |> AVal.map (function
-                        | Some p -> "Hover: " + p.ToString("0.00")
-                        | None   -> "Hover: none"
-                    )
-                }
-                ul {
-                    li { "right-click to place spheres in the scene" }
-                    li { "left-click and drag to move spheres" }
-                    li { "right-click on a sphere to delete it" }
-                    li { "double-click to focus the camera" }
+
+                div {
+                    Class "tab-panels"
+
+                    // ── Tab 1: Scene ──────────────────────────────────
+                    div {
+                        Class "tab-panel"
+                        Attribute("id", "hud-panel1")
+
+                        h1 {
+                            "Counter: "
+                            model.Value |> AVal.map string
+                        }
+                        button {
+                            "+"
+                            Dom.OnClick(fun _ -> env.Emit [Increment])
+                        }
+                        button {
+                            "-"
+                            Dom.OnClick(fun _ -> env.Emit [Decrement])
+                        }
+                        button {
+                            "Clear Points"
+                            Dom.OnClick(fun _ -> env.Emit [Clear])
+                        }
+                        h2 {
+                            model.Hover |> AVal.map (function
+                                | Some p -> "Hover: " + p.ToString("0.00")
+                                | None   -> "Hover: none"
+                            )
+                        }
+                        ul {
+                            li { "right-click to place spheres" }
+                            li { "left-click and drag to move" }
+                            li { "right-click a sphere to delete" }
+                            li { "double-click to focus camera" }
+                        }
+                    }
+
+                    // ── Tab 2: Info ───────────────────────────────────
+                    div {
+                        Class "tab-panel"
+                        Attribute("id", "hud-panel2")
+
+                        h1 { "Info" }
+                        p { "Aardvark.Dom WebAssembly scaffold." }
+                        p { "Elm-style architecture: Model / Update / View." }
+                        p { "Rendering via WebGL with an orbit camera." }
+                    }
+
+                    // ── Tab 3: Settings ───────────────────────────────
+                    div {
+                        Class "tab-panel"
+                        Attribute("id", "hud-panel3")
+
+                        h1 { "Settings" }
+                        p { "Nothing to configure yet." }
+                    }
                 }
             }
         }
