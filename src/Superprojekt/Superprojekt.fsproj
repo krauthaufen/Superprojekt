@@ -15,6 +15,7 @@
 <!--    <PostBuildEvent>dotnet fshadeaot $(MSBuildThisFileDirectory)/bin/$(Configuration)/$(TargetFramework)/Interactions.WASM.dll</PostBuildEvent>-->
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="WavefrontLoader.fs" />
     <Compile Include="CameraModel.fs" />
     <Compile Include="CameraModel.g.fs" />
     <Compile Include="OrbitController.fs" />

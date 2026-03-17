@@ -1,5 +1,5 @@
-//20073f06-5667-28cc-5af2-68ac0a96c5ab
-//31430623-3f32-2fb9-8fdb-b4edee887e21
+//ddcf501b-1839-ef0c-e16d-665722e7e4ed
+//ca4046ab-c66f-53f8-44b5-e793f89c32cd
 #nowarn "49" // upper case patterns
 #nowarn "66" // upcast is unncecessary
 #nowarn "1337" // internal types
@@ -17,6 +17,9 @@ type AdaptiveModel(value : Model) =
     let _Hover_ = FSharp.Data.Adaptive.cval(value.Hover)
     let _Points_ = FSharp.Data.Adaptive.clist(value.Points)
     let _DraggingPoint_ = FSharp.Data.Adaptive.cval(value.DraggingPoint)
+    let _MeshNames_ = FSharp.Data.Adaptive.clist(value.MeshNames)
+    let _MeshVisible_ = FSharp.Data.Adaptive.cval(value.MeshVisible)
+    let _CommonCentroid_ = FSharp.Data.Adaptive.cval(value.CommonCentroid)
     let mutable __value = value
     let __adaptive = FSharp.Data.Adaptive.AVal.custom((fun (token : FSharp.Data.Adaptive.AdaptiveToken) -> __value))
     static member Create(value : Model) = AdaptiveModel(value)
@@ -30,10 +33,16 @@ type AdaptiveModel(value : Model) =
             _Hover_.Value <- value.Hover
             _Points_.Value <- value.Points
             _DraggingPoint_.Value <- value.DraggingPoint
+            _MeshNames_.Value <- value.MeshNames
+            _MeshVisible_.Value <- value.MeshVisible
+            _CommonCentroid_.Value <- value.CommonCentroid
     member __.Current = __adaptive
     member __.Camera = _Camera_
     member __.Value = _Value_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Core.int>
     member __.Hover = _Hover_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Core.option<Aardvark.Base.V3d>>
     member __.Points = _Points_ :> FSharp.Data.Adaptive.alist<Aardvark.Base.V3d>
     member __.DraggingPoint = _DraggingPoint_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Core.option<(FSharp.Data.Adaptive.Index * Aardvark.Base.V3d)>>
+    member __.MeshNames = _MeshNames_ :> FSharp.Data.Adaptive.alist<Microsoft.FSharp.Core.string>
+    member __.MeshVisible = _MeshVisible_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Collections.Map<Microsoft.FSharp.Core.string, Microsoft.FSharp.Core.bool>>
+    member __.CommonCentroid = _CommonCentroid_ :> FSharp.Data.Adaptive.aval<Aardvark.Base.V3d>
 

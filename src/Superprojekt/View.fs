@@ -6,16 +6,72 @@ open FSharp.Data.Adaptive
 open Aardvark.Dom
 open Adaptify
 open Superprojekt
+open Aardworx.WebAssembly
 
 module View =
 
+    let render (name : string) (active : aval<bool>) (commonCentroid : aval<V3d>) =
+        sg {
+            Sg.Active active
+            Sg.Shader {
+                DefaultSurfaces.trafo
+                DefaultSurfaces.diffuseTexture
+            }
+            let pos = cval (ArrayBuffer Array.empty<V3f> :> IBuffer)
+            let tc  = cval (ArrayBuffer Array.empty<V2f>  :> IBuffer)
+            let idx = cval (ArrayBuffer Array.empty<int>   :> IBuffer)
+            let tex = cval<ITexture> (AVal.force DefaultTextures.checkerboard)
+            let fvc = cval 0
+
+            let _loader =
+                task {
+                    try
+                        let! mesh = MeshData.fetch "http://localhost:5181" name 0
+                        let cc = AVal.force commonCentroid
+                        // localPos is centroid-relative → add mesh.centroid for world pos → subtract common centroid
+                        let rebased = mesh.positions |> Array.map (fun p -> V3f(mesh.centroid + V3d p - cc))
+                        transact (fun () ->
+                            pos.Value <- ArrayBuffer rebased
+                            tc.Value  <- ArrayBuffer mesh.uvs
+                            idx.Value <- ArrayBuffer mesh.indices
+                            fvc.Value <- mesh.indices.Length
+                        )
+                        let! img = JSImage.load mesh.atlasUrl
+                        transact (fun () -> tex.Value <- JSTexture(img, true))
+                    with e ->
+                        Log.error "failed to load mesh %s: %A" name e
+                }
+
+            Sg.Uniform("DiffuseColorTexture", tex)
+            Sg.VertexAttributes(
+                HashMap.ofList [
+                    string DefaultSemantic.Positions,              BufferView(pos, typeof<V3f>)
+                    string DefaultSemantic.DiffuseColorCoordinates, BufferView(tc,  typeof<V2f>)
+                ]
+            )
+            Sg.Index(BufferView(idx, typeof<int>))
+            Sg.Render fvc
+        }
+
+
     let view (env : Env<Message>) (model : AdaptiveModel) =
+
+        // fetch all centroids once on startup; populates MeshNames + CommonCentroid
+        let _init =
+            task {
+                try
+                    let! cs = MeshData.fetchCentroids "http://localhost:5181"
+                    env.Emit [CentroidsLoaded cs]
+                with e ->
+                    Log.error "centroids fetch failed: %A" e
+            }
+
         body {
             OnBoot [
                 "const l = document.getElementById('loader');"
                 "if(l) l.remove();"
             ]
-            
+
             renderControl {
                 RenderControl.Samples 1
                 Class "render-control"
@@ -26,59 +82,64 @@ module View =
                 )
 
                 let! size = RenderControl.ViewportSize
-            
+
                 OrbitController.getAttributes (Env.map CameraMessage env)
-            
+
                 RenderControl.OnRendered(fun _ ->
                     env.Emit [CameraMessage OrbitMessage.Rendered]
                 )
-            
+
                 let proj =
                     size |> AVal.map (fun s ->
-                        Frustum.perspective 90.0 0.1 100.0 (float s.X / float s.Y)
+                        Frustum.perspective 90.0 0.5 1000.0 (float s.X / float s.Y)
                     )
-            
+
                 Sg.View(model.Camera.view |> AVal.map CameraView.viewTrafo)
                 Sg.Proj(proj |> AVal.map Frustum.projTrafo)
-            
-                Sg.OnPointerLeave(fun _ ->
-                    env.Emit [Hover None]
-                )
-            
+
+                Sg.OnPointerLeave(fun _ -> env.Emit [Hover None])
+
                 Sg.OnDoubleTap(fun e ->
                     env.Emit [CameraMessage (OrbitMessage.SetTargetCenter(true, AnimationKind.Tanh, e.WorldPosition))]
                     false
                 )
-            
+
                 Sg.OnTap(fun e ->
                     if e.Button = Button.Right then
                         env.Emit [Click e.Position]
                         false
-                    else
-                        true
+                    else true
                 )
-            
+
                 Sg.OnLongPress(fun e ->
                     env.Emit [Click e.Position]
                     false
                 )
-            
+
                 Sg.OnPointerMove(fun p ->
                     env.Emit [Hover (Some p.Position)]
                 )
-            
+
                 Sg.Shader {
                     DefaultSurfaces.trafo
                     DefaultSurfaces.simpleLighting
                     Shader.nothing
                 }
-            
+
                 // floor plane
                 sg {
                     Sg.Scale 10.0
                     Primitives.Quad(Quad3d(V3d(-1, -1, 0), V3d(2, 0, 0), V3d(0.0, 2.0, 0.0)), C4b.SandyBrown)
                 }
-            
+
+                // all loaded meshes
+                model.MeshNames |> AList.map (fun name ->
+                    let active =
+                        model.MeshVisible
+                        |> AVal.map (fun m -> Map.tryFind name m |> Option.defaultValue true)
+                    render name active model.CommonCentroid
+                ) |> AList.toASet
+
                 // green teapot at origin
                 sg {
                     Sg.Shader {
@@ -88,13 +149,13 @@ module View =
                     }
                     Primitives.Teapot(C4b.Green)
                 }
-            
+
                 // yellow octahedron hovering above the teapot
                 sg {
                     Sg.Translate(0.0, 0.0, 1.0)
                     Primitives.Octahedron(C4b.Yellow)
                 }
-            
+
                 // red hover sphere
                 sg {
                     Sg.Active(model.DraggingPoint |> AVal.map Option.isNone)
@@ -103,18 +164,16 @@ module View =
                     Sg.NoEvents
                     Primitives.Sphere(pos, 0.1, C4b.Red)
                 }
-            
+
                 // drag ghost + placed points
                 sg {
-                    // yellow ghost sphere while dragging
                     sg {
                         Sg.NoEvents
                         let pos = model.DraggingPoint |> AVal.map (function Some (_, p) -> Some p | _ -> None)
                         Sg.Active(pos |> AVal.map Option.isSome)
                         Primitives.Sphere(pos |> AVal.map (Option.defaultValue V3d.Zero), 0.1, C4b.Yellow)
                     }
-            
-                    // interactive green placed spheres
+
                     model.Points |> AList.mapi (fun idx pos ->
                         sg {
                             Sg.Active(model.DraggingPoint |> AVal.map (function Some (i, _) -> i <> idx | None -> true))
@@ -127,8 +186,7 @@ module View =
                                 if e.Button = Button.Right then
                                     env.Emit [Delete idx]
                                     false
-                                else
-                                    true
+                                else true
                             )
                             Sg.OnPointerDown(fun e ->
                                 if e.Button = Button.Left then
@@ -136,15 +194,13 @@ module View =
                                     e.Context.SetPointerCapture(e.Target, e.PointerId)
                                     env.Emit [StartDrag idx]
                                     false
-                                else
-                                    true
+                                else true
                             )
                             Sg.OnPointerMove(fun e ->
                                 if down then
                                     env.Emit [Message.Update(idx, e.WorldPosition)]
                                     false
-                                else
-                                    true
+                                else true
                             )
                             Sg.OnPointerUp(fun e ->
                                 if e.Button = Button.Left && down then
@@ -152,15 +208,14 @@ module View =
                                     env.Emit [Message.Update(idx, e.WorldPosition); StopDrag]
                                     e.Context.ReleasePointerCapture(e.Target, e.PointerId)
                                     false
-                                else
-                                    true
+                                else true
                             )
                             Primitives.Sphere(pos, 0.1, C4b.Green)
                         }
                     )
                 }
-            
-                // blue stacked boxes (counter-driven)
+
+                // blue stacked boxes
                 sg {
                     Sg.NoEvents
                     Sg.Translate(1.0, 0.0, 0.0)
@@ -180,7 +235,6 @@ module View =
 
                 div {
                     Class "tab-labels"
-                    // Each label wraps its radio — no `for` attribute needed
                     label {
                         input {
                             Attribute("type",    "radio")
@@ -238,6 +292,31 @@ module View =
                                 | None   -> "Hover: none"
                             )
                         }
+
+                        // mesh toggles
+                        h3 { "Meshes" }
+                        model.MeshNames |> AList.map (fun name ->
+                            let isVis =
+                                model.MeshVisible
+                                |> AVal.map (fun m -> Map.tryFind name m |> Option.defaultValue true)
+                            div {
+                                label {
+                                    input {
+                                        Attribute("type", "checkbox")
+                                        isVis |> AVal.map (fun v ->
+                                            if v then Some (Attribute("checked", "checked"))
+                                            else None
+                                        )
+                                        Dom.OnClick(fun _ ->
+                                            let current = AVal.force isVis
+                                            env.Emit [SetVisible(name, not current)]
+                                        )
+                                    }
+                                    " " + name
+                                }
+                            }
+                        )
+
                         ul {
                             li { "right-click to place spheres" }
                             li { "left-click and drag to move" }
@@ -269,7 +348,7 @@ module View =
             }
         }
 
-module App =    
+module App =
     let app =
         {
             initial   = Model.initial

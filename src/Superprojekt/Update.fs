@@ -8,14 +8,16 @@ open Superprojekt
 type Message =
     | Increment
     | Decrement
-    | Hover         of option<V3d>
-    | Click         of V3d
-    | Update        of Index * V3d
-    | StartDrag     of Index
+    | Hover             of option<V3d>
+    | Click             of V3d
+    | Update            of Index * V3d
+    | StartDrag         of Index
     | StopDrag
-    | Delete        of Index
+    | Delete            of Index
     | Clear
-    | CameraMessage of OrbitMessage
+    | CameraMessage     of OrbitMessage
+    | CentroidsLoaded   of (string * V3d)[]
+    | SetVisible        of string * bool
 
 
 module Update =
@@ -47,3 +49,10 @@ module Update =
             { model with Points = IndexList.remove p model.Points }
         | Clear ->
             { model with Points = IndexList.empty }
+        | CentroidsLoaded centroids ->
+            let common  = if centroids.Length > 0 then snd centroids.[0] else V3d.Zero
+            let names   = centroids |> Array.map fst |> IndexList.ofArray
+            let visible = centroids |> Array.fold (fun m (n, _) -> Map.add n true m) Map.empty
+            { model with MeshNames = names; MeshVisible = visible; CommonCentroid = common }
+        | SetVisible(name, v) ->
+            { model with MeshVisible = Map.add name v model.MeshVisible }
