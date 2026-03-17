@@ -254,9 +254,9 @@ module View =
             label {
                 Attribute("for", "burger-toggle")
                 Class "burger-btn"
-                span {}
-                span {}
-                span {}
+                div { Class "burger-line" }
+                div { Class "burger-line" }
+                div { Class "burger-line" }
             }
 
             // HUD overlay — pure-CSS tabs
