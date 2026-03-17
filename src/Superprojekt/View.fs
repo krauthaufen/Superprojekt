@@ -245,6 +245,20 @@ module View =
                 }
             }
 
+            // Burger menu toggle (mobile)
+            input {
+                Attribute("type", "checkbox")
+                Attribute("id", "burger-toggle")
+                Class "burger-toggle"
+            }
+            label {
+                Attribute("for", "burger-toggle")
+                Class "burger-btn"
+                span {}
+                span {}
+                span {}
+            }
+
             // HUD overlay — pure-CSS tabs
             div {
                 Class "tabs"

@@ -97,6 +97,51 @@ body {
     background: linear-gradient(to top, #d0dce8, #eaf1f8);
 }
 
+/* ── Burger toggle ─────────────────────────────────────────────────── */
+
+.burger-toggle {
+    display: none;
+}
+
+.burger-btn {
+    display: none;
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 1001;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.9);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    cursor: pointer;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 8px;
+}
+
+.burger-btn span {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: #1a1a2e;
+    border-radius: 1px;
+    transition: transform 0.2s, opacity 0.2s;
+}
+
+.burger-toggle:checked ~ .burger-btn span:nth-child(1) {
+    transform: rotate(45deg) translate(5px, 5px);
+}
+.burger-toggle:checked ~ .burger-btn span:nth-child(2) {
+    opacity: 0;
+}
+.burger-toggle:checked ~ .burger-btn span:nth-child(3) {
+    transform: rotate(-45deg) translate(5px, -5px);
+}
+
 /* ── Pure-CSS tabs ─────────────────────────────────────────────────── */
 
 .tabs {
@@ -214,4 +259,27 @@ body {
 .tabs:has(#hud-tab2:checked) #hud-panel2,
 .tabs:has(#hud-tab3:checked) #hud-panel3 {
     display: block;
+}
+
+/* ── Mobile: burger collapse ──────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .burger-btn {
+        display: flex;
+    }
+
+    .tabs {
+        display: none;
+        top: 56px;
+        left: 8px;
+        right: 8px;
+        width: auto;
+        max-height: calc(100vh - 70px);
+        overflow-y: auto;
+        z-index: 1000;
+    }
+
+    .burger-toggle:checked ~ .tabs {
+        display: block;
+    }
 }
