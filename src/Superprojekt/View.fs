@@ -10,11 +10,12 @@ open Aardworx.WebAssembly
 
 type LoadedMesh =
     {
-        pos  : cval<IBuffer>
-        tc   : cval<IBuffer>
-        idx  : cval<IBuffer>
-        tex  : cval<ITexture>
-        fvc  : cval<int>
+        centroid : aval<V3d>
+        pos  : aval<IBuffer>
+        tc   : aval<IBuffer>
+        idx  : aval<IBuffer>
+        tex  : aval<ITexture>
+        fvc  : aval<int>
         mesh : MeshData option ref
     }
 
@@ -33,12 +34,14 @@ module View =
 
     let private meshes = System.Collections.Generic.Dictionary<string, LoadedMesh>()
 
-    let private loadMeshAsync (name : string) (commonCentroid : aval<V3d>) : LoadedMesh =
+    let private loadMeshAsync (name : string) : LoadedMesh =
         match meshes.TryGetValue(name) with
         | true, m -> m
         | _ ->
+            let ccc = cval V3d.Zero
             let m =
                 {
+                    centroid = ccc
                     pos  = cval (ArrayBuffer [| V3f.Zero; V3f.Zero; V3f.Zero |] :> IBuffer)
                     tc   = cval (ArrayBuffer [| V2f.Zero; V2f.Zero; V2f.Zero |] :> IBuffer)
                     idx  = cval (ArrayBuffer [| 0; 1; 2 |] :> IBuffer)
@@ -50,44 +53,28 @@ module View =
             task {
                 try
                     let! mesh = MeshData.fetch apiBase.Value name 0
-                    let cc = AVal.force commonCentroid
-                    let rebased = mesh.positions |> Array.map (fun p -> V3f(mesh.centroid + V3d p - cc))
+                    let rebased = mesh.positions
                     m.mesh.Value <- Some mesh
                     transact (fun () ->
-                        m.pos.Value <- ArrayBuffer rebased
-                        m.tc.Value  <- ArrayBuffer mesh.uvs
-                        m.idx.Value <- ArrayBuffer mesh.indices
-                        m.fvc.Value <- mesh.indices.Length
+                        ccc.Value <- mesh.centroid
+                        (m.pos :?> cval<IBuffer>).Value <- ArrayBuffer rebased
+                        (m.tc :?> cval<IBuffer>).Value  <- ArrayBuffer mesh.uvs
+                        (m.idx :?> cval<IBuffer>).Value <- ArrayBuffer mesh.indices
+                        (m.fvc :?> cval<int>).Value <- mesh.indices.Length
                     )
                     let! img = JSImage.load mesh.atlasUrl
-                    transact (fun () -> m.tex.Value <- JSTexture(img, true))
+                    transact (fun () -> (m.tex :?> cval<ITexture>).Value <- JSTexture(img, true))
                 with e ->
                     Log.error "failed to load mesh %s: %A" name e
             } |> ignore
             m
 
-    let render (name : string) (active : aval<bool>) (commonCentroid : aval<V3d>) (filteredMesh : aval<option<string * V3d * int[]>>) =
-        let loaded = loadMeshAsync name commonCentroid
-
-        let filtActive =
-            filteredMesh |> AVal.map (fun fm ->
-                match fm with
-                | Some(n, _, indices) when n = name && indices.Length > 0 -> true
-                | _ -> false)
-
-        let filtIdx =
-            filteredMesh |> AVal.map (fun fm ->
-                match fm with
-                | Some(n, _, indices) when n = name && indices.Length > 0 -> ArrayBuffer indices :> IBuffer
-                | _ -> ArrayBuffer [| 0; 1; 2 |] :> IBuffer)
-
-        let filtFvc =
-            filteredMesh |> AVal.map (fun fm ->
-                match fm with
-                | Some(n, _, indices) when n = name && indices.Length > 0 -> indices.Length
-                | _ -> 0)
-
+    
+    let renderMesh (loaded : LoadedMesh) (active : aval<bool>) (commonCentroid : aval<V3d>) =
         sg {
+            Sg.Translate ((commonCentroid, loaded.centroid) ||> AVal.map2 (fun common mesh -> mesh - common))
+            
+            
             Sg.Shader {
                 DefaultSurfaces.trafo
                 DefaultSurfaces.diffuseTexture
@@ -101,35 +88,76 @@ module View =
             )
 
             // main mesh
-            sg {
-                Sg.Active(AVal.map2 (&&) active (loaded.fvc |> AVal.map (fun c -> c > 3)))
-                Sg.Index(BufferView(loaded.idx, typeof<int>))
-                Sg.Render loaded.fvc
-            }
-
-            // filtered overlay
-            sg {
-                Sg.Shader {
-                    DefaultSurfaces.trafo
-                    DefaultSurfaces.constantColor C4f.Red
-                }
-                Sg.Uniform("DiffuseColorTexture", loaded.tex)
-                Sg.VertexAttributes(
-                    HashMap.ofList [
-                        string DefaultSemantic.Positions,              BufferView(loaded.pos, typeof<V3f>)
-                        string DefaultSemantic.DiffuseColorCoordinates, BufferView(loaded.tc,  typeof<V2f>)
-                    ]
-                )
-                Sg.Active filtActive
-                Sg.Translate(0.0, 0.0, 0.01)
-                Sg.Index(BufferView(filtIdx, typeof<int>))
-                Sg.Render filtFvc
-            }
+            Sg.Active(AVal.map2 (&&) active (loaded.fvc |> AVal.map (fun c -> c > 3)))
+            Sg.Index(BufferView(loaded.idx, typeof<int>))
+            Sg.Render loaded.fvc
         }
+    
 
+    
+    let render (name : string) (active : aval<bool>) (commonCentroid : aval<V3d>) =
+        let loaded = loadMeshAsync name
+        renderMesh loaded active commonCentroid
 
+    
+    
+    
+    open System.Threading.Tasks
     let view (env : Env<Message>) (model : AdaptiveModel) =
-
+        async {
+            while true do
+                Log.line "before lseep"
+                do! Async.Sleep(100)
+                let a = (model.CurrentHoverPosition |> AVal.force |> Option.defaultValue V3d.Zero) + (model.CommonCentroid |> AVal.force)
+                
+                let! b = Query.sphereTriangles apiBase.Value "Hess-201803" 0 a 1.0
+                
+                env.Emit [
+                    LogDebug (sprintf "hover query result: %A %A" a b)
+                    SetFilters (a, HashMap.ofList [("Hess-201803", b)])
+                ]
+                
+                Log.line "asoidjasd %A %A" a b 
+        } |> Async.Start
+        // let sw = System.Diagnostics.Stopwatch()
+        // let run =
+        //     async {
+        //         do! Async.SwitchToThreadPool()
+        //         do! Async.Sleep(100)
+        //         let mutable lastPos = V3d.NaN
+        //         while true do
+        //             match model.CurrentHoverPosition |> AVal.force with
+        //             | Some pos ->
+        //                 try
+        //                     if pos <> lastPos then
+        //                         
+        //                         Log.line "query %A" pos
+        //                         
+        //                         sw.Restart()
+        //                         lastPos <- pos
+        //                         let names = model.MeshNames |> AList.force
+        //                         //let mutable res = HashMap.empty
+        //                         for name in names do 
+        //                             let! triIds =
+        //                                 Query.sphereTriangles apiBase.Value name 0 pos 1.0
+        //                             Log.line "got %d triIds for %s" triIds.Length name
+        //                             //res <- res |> HashMap.add name triIds
+        //                             
+        //                         Window.SetTimeout(0, fun () ->
+        //                             //env.Emit [SetFilters(pos, HashMap.empty)]
+        //                             Log.line "emitted"
+        //                         ) |> ignore
+        //                         sw.Stop()
+        //                         let d = max 0 (100 - int sw.Elapsed.TotalMilliseconds)
+        //                         do! Async.Sleep(1000)
+        //                 with e ->
+        //                     Log.error "hover query failed: %A" e
+        //             | None -> 
+        //                 do! Async.Sleep(1000)
+        //     }
+        //     
+        // Async.Start run
+        //     
         // fetch all centroids once on startup; populates MeshNames + CommonCentroid
         let _init =
             task {
@@ -155,6 +183,16 @@ module View =
 
                 OrbitController.getAttributes (Env.map CameraMessage env)
 
+                Sg.OnPointerMove (fun e ->
+                    env.Emit [SetCurrentHoverPosition (Some e.WorldPosition)]
+                )
+                Sg.OnFocusLeave (fun e ->
+                    env.Emit [SetCurrentHoverPosition None]
+                ) 
+                Sg.OnPointerLeave (fun e ->
+                    env.Emit [SetCurrentHoverPosition None]
+                ) 
+                
                 RenderControl.OnRendered(fun _ ->
                     env.Emit [CameraMessage OrbitMessage.Rendered]
                 )
@@ -188,18 +226,12 @@ module View =
                                     |> Async.StartAsTask
                                 env.Emit [LogDebug (sprintf "  %s: %d triangles" name triIds.Length)]
                                 if triIds.Length > 0 then
-                                    let loaded = loadMeshAsync name model.CommonCentroid
+                                    let loaded = loadMeshAsync name 
                                     match loaded.mesh.Value with
                                     | Some mesh ->
-                                        let triCount = mesh.indices.Length / 3
-                                        let maxTriId = if triIds.Length > 0 then triIds |> Array.max else -1
-                                        env.Emit [LogDebug (sprintf "  %s: maxTriId=%d triCount=%d idxLen=%d" name maxTriId triCount mesh.indices.Length)]
-                                        if maxTriId >= triCount then
-                                            env.Emit [LogDebug (sprintf "  %s: ERROR triId %d out of range (mesh has %d triangles)" name maxTriId triCount)]
-                                        else
-                                            let filtered = MeshData.filterByTriangles triIds mesh
-                                            env.Emit [LogDebug (sprintf "  %s: filtered %d indices" name filtered.indices.Length)]
-                                            env.Emit [FilteredMeshLoaded(name, renderPos, filtered.indices)]
+                                        let filtered = { mesh with indices = triIds } 
+                                        env.Emit [LogDebug (sprintf "  %s: filtered %d indices" name filtered.indices.Length)]
+                                        env.Emit [FilteredMeshLoaded(name, renderPos, filtered.indices)]
                                     | None ->
                                         env.Emit [LogDebug (sprintf "  %s: mesh not loaded yet" name)]
                             env.Emit [LogDebug "triggerFilter done"]
@@ -214,6 +246,8 @@ module View =
                         false
                     else true
                 )
+                
+                
 
                 Sg.OnLongPress(fun e ->
                     env.Emit [LogDebug (sprintf "LongPress pos=%s world=%s" (e.Position.ToString("0.00")) (e.WorldPosition.ToString("0.00")))]
@@ -243,9 +277,27 @@ module View =
                     let active =
                         model.MeshVisible
                         |> AVal.map (fun m -> Map.tryFind name m |> Option.defaultValue true)
-                    render name active model.CommonCentroid model.FilteredMesh
+                        
+                    sg {
+                        
+                        render name active model.CommonCentroid
+                        
+                        sg {
+                            
+                            Sg.Translate (0.0, 0.0, 1.0)
+                            
+                            let index = AMap.tryFind name model.Filtered |> AVal.map (function Some idx -> idx  | None -> [||])
+                            
+                            let buffer = index |> AVal.map (fun v -> ArrayBuffer(v) :> IBuffer)
+                            let mesh = loadMeshAsync name
+                            let filterMesh = { mesh with idx = buffer; fvc = index |> AVal.map Array.length }
+                            renderMesh filterMesh active model.CommonCentroid
+                        }
+                    }
+                        
                 ) |> AList.toASet
 
+                
                 // green teapot at origin
                 sg {
                     Sg.Shader {
@@ -270,17 +322,17 @@ module View =
                     Primitives.Sphere(pos, 0.1, C4b.Red)
                 }
 
-                // query sphere visualisation
-                sg {
-                    Sg.Shader {
-                        DefaultSurfaces.trafo
-                        DefaultSurfaces.simpleLighting
-                    }
-                    Sg.Active(model.FilteredMesh |> AVal.map Option.isSome)
-                    let pos = model.FilteredMesh |> AVal.map (function Some(_, p, _) -> p | None -> V3d.Zero)
-                    Sg.NoEvents
-                    Primitives.Sphere(pos, 1.0, C4b.Yellow)
-                }
+                // // query sphere visualisation
+                // sg {
+                //     Sg.Shader {
+                //         DefaultSurfaces.trafo
+                //         DefaultSurfaces.simpleLighting
+                //     }
+                //     Sg.Active(model.FilteredMesh |> AVal.map Option.isSome)
+                //     let pos = model.FilteredMesh |> AVal.map (function Some(_, p, _) -> p | None -> V3d.Zero)
+                //     Sg.NoEvents
+                //     Primitives.Sphere(pos, 1.0, C4b.Yellow)
+                // }
 
                 // blue stacked boxes
                 sg {

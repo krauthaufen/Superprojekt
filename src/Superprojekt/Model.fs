@@ -16,9 +16,13 @@ type Model =
         MeshVisible    : Map<string, bool>        // aval<Map> — visibility per name
         CommonCentroid : V3d                      // reference origin for rendering
         MenuOpen       : bool
+        
         [<CheapEquals>]
-        FilteredMesh   : option<string * V3d * int[]>  // (mesh name, selection point, index buffer)
+        Filtered       : HashMap<string, int[]>
+        FilterCenter   : option<V3d>
         DebugLog       : IndexList<string>
+        
+        CurrentHoverPosition : Option<V3d>
     }
 
 module Model =
@@ -31,6 +35,8 @@ module Model =
             MeshVisible    = Map.empty
             CommonCentroid = V3d.Zero
             MenuOpen       = false
-            FilteredMesh   = None
+            Filtered        = HashMap.empty
+            FilterCenter    = None
             DebugLog       = IndexList.empty
+            CurrentHoverPosition = None
         }

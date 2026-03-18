@@ -1,5 +1,5 @@
-//cc7fe973-8e03-20ca-d95d-91af48bf64c9
-//c52e0ed1-83eb-7ca4-9147-a0a6afd1a7ef
+//b4a7b4c2-7d24-50be-95d4-496f25a5b0c1
+//2f64f0e3-93e2-c82c-1922-8275db86f426
 #nowarn "49" // upper case patterns
 #nowarn "66" // upcast is unncecessary
 #nowarn "1337" // internal types
@@ -19,8 +19,10 @@ type AdaptiveModel(value : Model) =
     let _MeshVisible_ = FSharp.Data.Adaptive.cval(value.MeshVisible)
     let _CommonCentroid_ = FSharp.Data.Adaptive.cval(value.CommonCentroid)
     let _MenuOpen_ = FSharp.Data.Adaptive.cval(value.MenuOpen)
-    let _FilteredMesh_ = Adaptify.ChangeableValueCustomEquality(value.FilteredMesh, (fun (va : Microsoft.FSharp.Core.option<(Microsoft.FSharp.Core.string * Aardvark.Base.V3d * (Microsoft.FSharp.Core.int)[])>) (vb : Microsoft.FSharp.Core.option<(Microsoft.FSharp.Core.string * Aardvark.Base.V3d * (Microsoft.FSharp.Core.int)[])>) -> FSharp.Data.Adaptive.ShallowEqualityComparer<Microsoft.FSharp.Core.option<(Microsoft.FSharp.Core.string * Aardvark.Base.V3d * (Microsoft.FSharp.Core.int)[])>>.ShallowEquals(va, vb)))
+    let _Filtered_ = FSharp.Data.Adaptive.cmap(value.Filtered)
+    let _FilterCenter_ = FSharp.Data.Adaptive.cval(value.FilterCenter)
     let _DebugLog_ = FSharp.Data.Adaptive.clist(value.DebugLog)
+    let _CurrentHoverPosition_ = FSharp.Data.Adaptive.cval(value.CurrentHoverPosition)
     let mutable __value = value
     let __adaptive = FSharp.Data.Adaptive.AVal.custom((fun (token : FSharp.Data.Adaptive.AdaptiveToken) -> __value))
     static member Create(value : Model) = AdaptiveModel(value)
@@ -36,8 +38,10 @@ type AdaptiveModel(value : Model) =
             _MeshVisible_.Value <- value.MeshVisible
             _CommonCentroid_.Value <- value.CommonCentroid
             _MenuOpen_.Value <- value.MenuOpen
-            _FilteredMesh_.Value <- value.FilteredMesh
+            _Filtered_.Value <- value.Filtered
+            _FilterCenter_.Value <- value.FilterCenter
             _DebugLog_.Value <- value.DebugLog
+            _CurrentHoverPosition_.Value <- value.CurrentHoverPosition
     member __.Current = __adaptive
     member __.Camera = _Camera_
     member __.Value = _Value_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Core.int>
@@ -46,6 +50,8 @@ type AdaptiveModel(value : Model) =
     member __.MeshVisible = _MeshVisible_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Collections.Map<Microsoft.FSharp.Core.string, Microsoft.FSharp.Core.bool>>
     member __.CommonCentroid = _CommonCentroid_ :> FSharp.Data.Adaptive.aval<Aardvark.Base.V3d>
     member __.MenuOpen = _MenuOpen_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Core.bool>
-    member __.FilteredMesh = _FilteredMesh_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Core.option<(Microsoft.FSharp.Core.string * Aardvark.Base.V3d * (Microsoft.FSharp.Core.int)[])>>
+    member __.Filtered = _Filtered_ :> FSharp.Data.Adaptive.amap<Microsoft.FSharp.Core.string, (Microsoft.FSharp.Core.int)[]>
+    member __.FilterCenter = _FilterCenter_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Core.option<Aardvark.Base.V3d>>
     member __.DebugLog = _DebugLog_ :> FSharp.Data.Adaptive.alist<Microsoft.FSharp.Core.string>
+    member __.CurrentHoverPosition = _CurrentHoverPosition_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Core.Option<Aardvark.Base.V3d>>
 

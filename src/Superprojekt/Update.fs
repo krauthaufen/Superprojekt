@@ -15,8 +15,10 @@ type Message =
     | ToggleMenu
     | ShowFilteredMesh  of V3d                  // render-space selection point
     | FilteredMeshLoaded of string * V3d * int[] // (mesh name, selection point, index buffer)
+    | SetFilters of V3d * HashMap<string,int[]>
     | ClearFilteredMesh
     | LogDebug        of string
+    | SetCurrentHoverPosition of Option<V3d>
 
 
 module Update =
@@ -42,10 +44,19 @@ module Update =
         | ShowFilteredMesh renderPos ->
             model // async work happens in the view; model unchanged here
         | FilteredMeshLoaded(name, selPt, indices) ->
-            { model with FilteredMesh = Some(name, selPt, indices) }
+            {
+                model with
+                    Filtered = HashMap.add name indices model.Filtered
+                    FilterCenter = Some selPt
+            }
+            
         | ClearFilteredMesh ->
-            { model with FilteredMesh = None }
+            { model with Filtered = HashMap.empty; FilterCenter = None }
         | LogDebug s ->
-            let log = model.DebugLog.Add s
-            let log = if log.Count > 20 then IndexList.skip (log.Count - 20) log else log
+            let log = model.DebugLog.InsertAt (0,s)
+            let log = if log.Count > 20 then IndexList.take (log.Count - 20) log else log
             { model with DebugLog = log }
+        | SetCurrentHoverPosition p ->
+            {model with CurrentHoverPosition=p}
+        | SetFilters (p,map) ->
+            {model with Filtered = map; FilterCenter = Some p}
