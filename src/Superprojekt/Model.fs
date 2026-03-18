@@ -12,7 +12,8 @@ type Model =
         Camera         : OrbitState
         Value          : int
         Hover          : option<V3d>
-        MeshNames      : IndexList<string>       // ordered; drives render loop
+        MeshOrder      : HashMap<string,int>
+        MeshNames      : IndexList<string>       
         MeshVisible    : Map<string, bool>        // aval<Map> — visibility per name
         CommonCentroid : V3d                      // reference origin for rendering
         MenuOpen       : bool
@@ -31,6 +32,7 @@ module Model =
             Value          = 3
             Hover          = None
             Camera         = OrbitState.create V3d.Zero 1.0 0.3 3.0 Button.Left Button.Middle
+            MeshOrder         = HashMap.empty
             MeshNames      = IndexList.empty
             MeshVisible    = Map.empty
             CommonCentroid = V3d.Zero

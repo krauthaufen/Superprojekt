@@ -19,6 +19,7 @@ type Message =
     | ClearFilteredMesh
     | LogDebug        of string
     | SetCurrentHoverPosition of Option<V3d>
+    | CycleMeshOrder of int
 
 
 module Update =
@@ -36,7 +37,8 @@ module Update =
             let common  = if centroids.Length > 0 then snd centroids.[0] else V3d.Zero
             let names   = centroids |> Array.map fst |> IndexList.ofArray
             let visible = centroids |> Array.fold (fun m (n, _) -> Map.add n true m) Map.empty
-            { model with MeshNames = names; MeshVisible = visible; CommonCentroid = common }
+            let indices = centroids |> Array.mapi (fun i (n,_) -> n,i) |> HashMap.ofArray
+            { model with MeshNames = names; MeshVisible = visible; CommonCentroid = common; MeshOrder = indices}
         | SetVisible(name, v) ->
             { model with MeshVisible = Map.add name v model.MeshVisible }
         | ToggleMenu ->
@@ -60,3 +62,12 @@ module Update =
             {model with CurrentHoverPosition=p}
         | SetFilters (p,map) ->
             {model with Filtered = map; FilterCenter = Some p}
+        | CycleMeshOrder delta ->
+            let order = model.MeshOrder
+            let n = order.Count
+            let newOrder =
+                let delta = (delta % n) + n
+                order |> HashMap.map (fun _ idx ->
+                    (idx + delta) % n
+                )
+            { model with MeshOrder = newOrder }

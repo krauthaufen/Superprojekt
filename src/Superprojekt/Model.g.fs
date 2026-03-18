@@ -1,5 +1,5 @@
-//b4a7b4c2-7d24-50be-95d4-496f25a5b0c1
-//2f64f0e3-93e2-c82c-1922-8275db86f426
+//df68f1a0-7b8a-efec-7e74-d67c808aa9c3
+//8434c694-1412-8a1f-0a2f-bd4d1be5c755
 #nowarn "49" // upper case patterns
 #nowarn "66" // upcast is unncecessary
 #nowarn "1337" // internal types
@@ -15,6 +15,7 @@ type AdaptiveModel(value : Model) =
     let _Camera_ = AdaptiveOrbitState(value.Camera)
     let _Value_ = FSharp.Data.Adaptive.cval(value.Value)
     let _Hover_ = FSharp.Data.Adaptive.cval(value.Hover)
+    let _MeshOrder_ = FSharp.Data.Adaptive.cmap(value.MeshOrder)
     let _MeshNames_ = FSharp.Data.Adaptive.clist(value.MeshNames)
     let _MeshVisible_ = FSharp.Data.Adaptive.cval(value.MeshVisible)
     let _CommonCentroid_ = FSharp.Data.Adaptive.cval(value.CommonCentroid)
@@ -34,6 +35,7 @@ type AdaptiveModel(value : Model) =
             _Camera_.Update(value.Camera)
             _Value_.Value <- value.Value
             _Hover_.Value <- value.Hover
+            _MeshOrder_.Value <- value.MeshOrder
             _MeshNames_.Value <- value.MeshNames
             _MeshVisible_.Value <- value.MeshVisible
             _CommonCentroid_.Value <- value.CommonCentroid
@@ -46,6 +48,7 @@ type AdaptiveModel(value : Model) =
     member __.Camera = _Camera_
     member __.Value = _Value_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Core.int>
     member __.Hover = _Hover_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Core.option<Aardvark.Base.V3d>>
+    member __.MeshOrder = _MeshOrder_ :> FSharp.Data.Adaptive.amap<Microsoft.FSharp.Core.string, Microsoft.FSharp.Core.int>
     member __.MeshNames = _MeshNames_ :> FSharp.Data.Adaptive.alist<Microsoft.FSharp.Core.string>
     member __.MeshVisible = _MeshVisible_ :> FSharp.Data.Adaptive.aval<Microsoft.FSharp.Collections.Map<Microsoft.FSharp.Core.string, Microsoft.FSharp.Core.bool>>
     member __.CommonCentroid = _CommonCentroid_ :> FSharp.Data.Adaptive.aval<Aardvark.Base.V3d>
