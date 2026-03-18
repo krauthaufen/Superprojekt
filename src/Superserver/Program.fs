@@ -118,28 +118,6 @@ module MeshLoader =
           uvs       = outUv.ToArray()
           indices   = outIdx.ToArray() }
 
-    // Binary layout (little-endian):
-    //   "MESH"  vertexCount  indexCount  centroid(3×f64)
-    //   positions(V3f[])  uvs(V2f[])  indices(int[])
-
-    let serialize (name : string) (index : int) : byte[] =
-        let pm     = parseMesh name index
-        let folder = Path.Combine(dataRoot.Value, name)
-        let files  = objFiles folder
-        let base'  = Path.GetFileNameWithoutExtension files.[index]
-        let jpg    = Path.Combine(folder, base' + "_atlas.jpg")
-        if not (File.Exists jpg) then failwithf "atlas not found: %s" jpg
-        use ms = new MemoryStream()
-        use bw = new BinaryWriter(ms)
-        bw.Write("MESH"B)
-        bw.Write(pm.positions.Length)
-        bw.Write(pm.indices.Length)
-        bw.Write(pm.centroid.X); bw.Write(pm.centroid.Y); bw.Write(pm.centroid.Z)
-        for p in pm.positions do bw.Write(p.X); bw.Write(p.Y); bw.Write(p.Z)
-        for uv in pm.uvs      do bw.Write(uv.X); bw.Write(uv.Y)
-        for i  in pm.indices  do bw.Write(i)
-        ms.ToArray()
-
     let atlasPath (name : string) (index : int) =
         let folder = Path.Combine(dataRoot.Value, name)
         let files  = objFiles folder
@@ -267,7 +245,24 @@ let meshCountHandler (name : string) : HttpHandler =
 let meshHandler (name : string, index : int) : HttpHandler =
     fun next ctx -> task {
         try
-            let bytes = MeshLoader.serialize name index
+            // Load through cache so Embree scene + BVH are ready for queries
+            let lm     = MeshCache.get name index
+            let pm     = lm.parsed
+            let folder = Path.Combine(MeshLoader.dataRoot.Value, name)
+            let files  = Directory.GetFiles(folder, "*.obj") |> Array.sort
+            let base'  = Path.GetFileNameWithoutExtension files.[index]
+            let jpg    = Path.Combine(folder, base' + "_atlas.jpg")
+            if not (File.Exists jpg) then failwithf "atlas not found: %s" jpg
+            use ms = new MemoryStream()
+            use bw = new BinaryWriter(ms)
+            bw.Write("MESH"B)
+            bw.Write(pm.positions.Length)
+            bw.Write(pm.indices.Length)
+            bw.Write(pm.centroid.X); bw.Write(pm.centroid.Y); bw.Write(pm.centroid.Z)
+            for p  in pm.positions do bw.Write(p.X);  bw.Write(p.Y);  bw.Write(p.Z)
+            for uv in pm.uvs       do bw.Write(uv.X); bw.Write(uv.Y)
+            for i  in pm.indices   do bw.Write(i)
+            let bytes = ms.ToArray()
             ctx.Response.ContentType <- "application/octet-stream"
             do! ctx.Response.Body.WriteAsync(bytes, 0, bytes.Length)
             return! next ctx

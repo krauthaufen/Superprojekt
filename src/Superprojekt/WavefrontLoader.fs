@@ -112,9 +112,9 @@ module Query =
     /// POST /query/ray  — returns (hit, t, hitPoint, triangleId) option
     let rayHit (serverUrl : string) (name : string) (index : int) (origin : V3d) (direction : V3d) =
         async {
-            let body = {| Name = name; Index = index
-                          Origin    = [| origin.X;    origin.Y;    origin.Z    |]
-                          Direction = [| direction.X; direction.Y; direction.Z |] |}
+            let body = {| name = name; index = index
+                          origin    = [| origin.X;    origin.Y;    origin.Z    |]
+                          direction = [| direction.X; direction.Y; direction.Z |] |}
             let! r = post serverUrl "/query/ray" body
             if r.GetProperty("hit").GetBoolean() then
                 let pt = r.GetProperty("point").EnumerateArray() |> Seq.map (fun e -> e.GetDouble()) |> Seq.toArray
@@ -128,8 +128,8 @@ module Query =
     /// POST /query/closest  — returns (closestPoint, distanceSquared, triangleId) option
     let closestPoint (serverUrl : string) (name : string) (index : int) (queryPoint : V3d) =
         async {
-            let body = {| Name = name; Index = index
-                          Point = [| queryPoint.X; queryPoint.Y; queryPoint.Z |] |}
+            let body = {| name = name; index = index
+                          point = [| queryPoint.X; queryPoint.Y; queryPoint.Z |] |}
             let! r = post serverUrl "/query/closest" body
             if r.GetProperty("found").GetBoolean() then
                 let pt = r.GetProperty("point").EnumerateArray() |> Seq.map (fun e -> e.GetDouble()) |> Seq.toArray
@@ -143,8 +143,8 @@ module Query =
     /// POST /query/sphere  — returns triangle indices whose AABB overlaps the sphere
     let sphereTriangles (serverUrl : string) (name : string) (index : int) (center : V3d) (radius : float) =
         async {
-            let body = {| Name = name; Index = index
-                          Center = [| center.X; center.Y; center.Z |]; Radius = radius |}
+            let body = {| name = name; index = index
+                          center = [| center.X; center.Y; center.Z |]; radius = radius |}
             let! r = post serverUrl "/query/sphere" body
             return
                 r.GetProperty("triangleIndices").EnumerateArray()
@@ -155,8 +155,8 @@ module Query =
     /// POST /query/box  — returns triangle indices whose AABB overlaps the box
     let boxTriangles (serverUrl : string) (name : string) (index : int) (min : V3d) (max : V3d) =
         async {
-            let body = {| Name = name; Index = index
-                          Min = [| min.X; min.Y; min.Z |]; Max = [| max.X; max.Y; max.Z |] |}
+            let body = {| name = name; index = index
+                          min = [| min.X; min.Y; min.Z |]; max = [| max.X; max.Y; max.Z |] |}
             let! r = post serverUrl "/query/box" body
             return
                 r.GetProperty("triangleIndices").EnumerateArray()
