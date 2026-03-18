@@ -6,163 +6,17 @@ open FSharp.Data.Adaptive
 open Aardvark.Dom
 open Adaptify
 open Superprojekt
-open Aardworx.WebAssembly
-
-type LoadedMesh =
-    {
-        centroid : aval<V3d>
-        pos  : aval<IBuffer>
-        tc   : aval<IBuffer>
-        idx  : aval<IBuffer>
-        tex  : aval<ITexture>
-        fvc  : aval<int>
-        mesh : MeshData option ref
-    }
 
 module View =
 
-    let private apiBase =
-        lazy (
-            let href = Window.Location.Href
-            let uri = System.Uri(href)
-            let mutable path = uri.AbsolutePath
-            // strip filename (e.g. index.html)
-            if path.Contains('.') then path <- path.Substring(0, path.LastIndexOf('/') + 1)
-            path <- path.TrimEnd('/')
-            uri.GetLeftPart(System.UriPartial.Authority) + path + "/api"
-        )
-
-    let private meshes = System.Collections.Generic.Dictionary<string, LoadedMesh>()
-
-    let private loadMeshAsync (name : string) : LoadedMesh =
-        match meshes.TryGetValue(name) with
-        | true, m -> m
-        | _ ->
-            let ccc = cval V3d.Zero
-            let m =
-                {
-                    centroid = ccc
-                    pos  = cval (ArrayBuffer [| V3f.Zero; V3f.Zero; V3f.Zero |] :> IBuffer)
-                    tc   = cval (ArrayBuffer [| V2f.Zero; V2f.Zero; V2f.Zero |] :> IBuffer)
-                    idx  = cval (ArrayBuffer [| 0; 1; 2 |] :> IBuffer)
-                    tex  = cval<ITexture> (AVal.force DefaultTextures.checkerboard)
-                    fvc  = cval 3
-                    mesh = ref None
-                }
-            meshes.[name] <- m
-            task {
-                try
-                    let! mesh = MeshData.fetch apiBase.Value name 0
-                    let rebased = mesh.positions
-                    m.mesh.Value <- Some mesh
-                    transact (fun () ->
-                        ccc.Value <- mesh.centroid
-                        (m.pos :?> cval<IBuffer>).Value <- ArrayBuffer rebased
-                        (m.tc :?> cval<IBuffer>).Value  <- ArrayBuffer mesh.uvs
-                        (m.idx :?> cval<IBuffer>).Value <- ArrayBuffer mesh.indices
-                        (m.fvc :?> cval<int>).Value <- mesh.indices.Length
-                    )
-                    let! img = JSImage.load mesh.atlasUrl
-                    transact (fun () -> (m.tex :?> cval<ITexture>).Value <- JSTexture(img, true))
-                with e ->
-                    Log.error "failed to load mesh %s: %A" name e
-            } |> ignore
-            m
-
-    
-    let renderMesh (loaded : LoadedMesh) (active : aval<bool>) (commonCentroid : aval<V3d>) =
-        sg {
-            Sg.Translate ((commonCentroid, loaded.centroid) ||> AVal.map2 (fun common mesh -> mesh - common))
-            
-            
-            Sg.Shader {
-                DefaultSurfaces.trafo
-                DefaultSurfaces.diffuseTexture
-            }
-            Sg.Uniform("DiffuseColorTexture", loaded.tex)
-            Sg.VertexAttributes(
-                HashMap.ofList [
-                    string DefaultSemantic.Positions,              BufferView(loaded.pos, typeof<V3f>)
-                    string DefaultSemantic.DiffuseColorCoordinates, BufferView(loaded.tc,  typeof<V2f>)
-                ]
-            )
-
-            // main mesh
-            Sg.Active(AVal.map2 (&&) active (loaded.fvc |> AVal.map (fun c -> c > 3)))
-            Sg.Index(BufferView(loaded.idx, typeof<int>))
-            Sg.Render loaded.fvc
-        }
-    
-
-    
-    let render (name : string) (active : aval<bool>) (commonCentroid : aval<V3d>) =
-        let loaded = loadMeshAsync name
-        renderMesh loaded active commonCentroid
-
-    
-    
-    
-    open System.Threading.Tasks
     let view (env : Env<Message>) (model : AdaptiveModel) =
-        async {
-            while true do
-                Log.line "before lseep"
-                do! Async.Sleep(100)
-                let a = (model.CurrentHoverPosition |> AVal.force |> Option.defaultValue V3d.Zero) + (model.CommonCentroid |> AVal.force)
-                
-                let! b = Query.sphereTriangles apiBase.Value "Hess-201803" 0 a 1.0
-                
-                env.Emit [
-                    LogDebug (sprintf "hover query result: %A %A" a b)
-                    SetFilters (a, HashMap.ofList [("Hess-201803", b)])
-                ]
-                
-                Log.line "asoidjasd %A %A" a b 
-        } |> Async.Start
-        // let sw = System.Diagnostics.Stopwatch()
-        // let run =
-        //     async {
-        //         do! Async.SwitchToThreadPool()
-        //         do! Async.Sleep(100)
-        //         let mutable lastPos = V3d.NaN
-        //         while true do
-        //             match model.CurrentHoverPosition |> AVal.force with
-        //             | Some pos ->
-        //                 try
-        //                     if pos <> lastPos then
-        //                         
-        //                         Log.line "query %A" pos
-        //                         
-        //                         sw.Restart()
-        //                         lastPos <- pos
-        //                         let names = model.MeshNames |> AList.force
-        //                         //let mutable res = HashMap.empty
-        //                         for name in names do 
-        //                             let! triIds =
-        //                                 Query.sphereTriangles apiBase.Value name 0 pos 1.0
-        //                             Log.line "got %d triIds for %s" triIds.Length name
-        //                             //res <- res |> HashMap.add name triIds
-        //                             
-        //                         Window.SetTimeout(0, fun () ->
-        //                             //env.Emit [SetFilters(pos, HashMap.empty)]
-        //                             Log.line "emitted"
-        //                         ) |> ignore
-        //                         sw.Stop()
-        //                         let d = max 0 (100 - int sw.Elapsed.TotalMilliseconds)
-        //                         do! Async.Sleep(1000)
-        //                 with e ->
-        //                     Log.error "hover query failed: %A" e
-        //             | None -> 
-        //                 do! Async.Sleep(1000)
-        //     }
-        //     
-        // Async.Start run
-        //     
-        // fetch all centroids once on startup; populates MeshNames + CommonCentroid
+
+        Interactions.startHoverQuery env model
+
         let _init =
             task {
                 try
-                    let! cs = MeshData.fetchCentroids apiBase.Value
+                    let! cs = MeshData.fetchCentroids MeshView.apiBase.Value
                     env.Emit [CentroidsLoaded cs]
                 with e ->
                     Log.error "centroids fetch failed: %A" e
@@ -183,16 +37,16 @@ module View =
 
                 OrbitController.getAttributes (Env.map CameraMessage env)
 
-                Sg.OnPointerMove (fun e ->
+                Sg.OnPointerMove(fun e ->
                     env.Emit [SetCurrentHoverPosition (Some e.WorldPosition)]
                 )
-                Sg.OnFocusLeave (fun e ->
+                Sg.OnFocusLeave(fun _ ->
                     env.Emit [SetCurrentHoverPosition None]
-                ) 
-                Sg.OnPointerLeave (fun e ->
-                    env.Emit [SetCurrentHoverPosition None]
-                ) 
-                
+                )
+                Sg.OnPointerLeave(fun _ ->
+                    env.Emit [SetCurrentHoverPosition None; Hover None]
+                )
+
                 RenderControl.OnRendered(fun _ ->
                     env.Emit [CameraMessage OrbitMessage.Rendered]
                 )
@@ -205,54 +59,23 @@ module View =
                 Sg.View(model.Camera.view |> AVal.map CameraView.viewTrafo)
                 Sg.Proj(proj |> AVal.map Frustum.projTrafo)
 
-                Sg.OnPointerLeave(fun _ -> env.Emit [Hover None])
-
                 Sg.OnDoubleTap(fun e ->
                     env.Emit [CameraMessage (OrbitMessage.SetTargetCenter(true, AnimationKind.Tanh, e.WorldPosition))]
                     false
                 )
 
-                let triggerFilter (renderPos : V3d) =
-                    let cc       = AVal.force model.CommonCentroid
-                    let worldPos = renderPos + cc
-                    let names    = AList.force model.MeshNames
-                    env.Emit [LogDebug (sprintf "triggerFilter pos=%s world=%s meshes=%d" (renderPos.ToString("0.00")) (worldPos.ToString("0.00")) (Seq.length names))]
-                    task {
-                        try
-                            for name in names do
-                                env.Emit [LogDebug (sprintf "  query sphere %s..." name)]
-                                let! triIds =
-                                    Query.sphereTriangles apiBase.Value name 0 worldPos 1.0
-                                    |> Async.StartAsTask
-                                env.Emit [LogDebug (sprintf "  %s: %d triangles" name triIds.Length)]
-                                if triIds.Length > 0 then
-                                    let loaded = loadMeshAsync name 
-                                    match loaded.mesh.Value with
-                                    | Some mesh ->
-                                        let filtered = { mesh with indices = triIds } 
-                                        env.Emit [LogDebug (sprintf "  %s: filtered %d indices" name filtered.indices.Length)]
-                                        env.Emit [FilteredMeshLoaded(name, renderPos, filtered.indices)]
-                                    | None ->
-                                        env.Emit [LogDebug (sprintf "  %s: mesh not loaded yet" name)]
-                            env.Emit [LogDebug "triggerFilter done"]
-                        with e ->
-                            env.Emit [LogDebug (sprintf "triggerFilter ERROR: %s" (string e))]
-                    } |> ignore
-
                 Sg.OnTap(fun e ->
                     if e.Ctrl && e.Button = Button.Left then
                         env.Emit [ClearFilteredMesh]
-                        triggerFilter e.Position
+                        Interactions.triggerFilter env model e.Position
                         false
                     else true
                 )
-                
-                
 
                 Sg.OnLongPress(fun e ->
                     env.Emit [LogDebug (sprintf "LongPress pos=%s world=%s" (e.Position.ToString("0.00")) (e.WorldPosition.ToString("0.00")))]
                     env.Emit [ClearFilteredMesh]
-                    triggerFilter e.Position
+                    Interactions.triggerFilter env model e.Position
                     false
                 )
 
@@ -272,33 +95,26 @@ module View =
                     Primitives.Quad(Quad3d(V3d(-1, -1, 0), V3d(2, 0, 0), V3d(0.0, 2.0, 0.0)), C4b.SandyBrown)
                 }
 
-                // all loaded meshes (+ per-mesh filtered overlay)
+                // all loaded meshes + filter overlay per mesh
                 model.MeshNames |> AList.map (fun name ->
                     let active =
                         model.MeshVisible
                         |> AVal.map (fun m -> Map.tryFind name m |> Option.defaultValue true)
-                        
                     sg {
-                        
-                        render name active model.CommonCentroid
-                        
+                        MeshView.render name active model.CommonCentroid
+
                         sg {
-                            
-                            Sg.Translate (0.0, 0.0, 1.0)
-                            
-                            let index = AMap.tryFind name model.Filtered |> AVal.map (function Some idx -> idx  | None -> [||])
-                            
+                            Sg.Translate(0.0, 0.0, 1.0)
+                            let index = AMap.tryFind name model.Filtered |> AVal.map (function Some idx -> idx | None -> [||])
                             let buffer = index |> AVal.map (fun v -> ArrayBuffer(v) :> IBuffer)
-                            let mesh = loadMeshAsync name
+                            let mesh   = MeshView.loadMeshAsync name
                             let filterMesh = { mesh with idx = buffer; fvc = index |> AVal.map Array.length }
-                            renderMesh filterMesh active model.CommonCentroid
+                            MeshView.renderMesh filterMesh active model.CommonCentroid
                         }
                     }
-                        
                 ) |> AList.toASet
 
-                
-                // green teapot at origin
+                // green teapot
                 sg {
                     Sg.Shader {
                         DefaultSurfaces.trafo
@@ -308,7 +124,7 @@ module View =
                     Primitives.Teapot(C4b.Green)
                 }
 
-                // yellow octahedron hovering above the teapot
+                // yellow octahedron
                 sg {
                     Sg.Translate(0.0, 0.0, 1.0)
                     Primitives.Octahedron(C4b.Yellow)
@@ -321,18 +137,6 @@ module View =
                     Sg.NoEvents
                     Primitives.Sphere(pos, 0.1, C4b.Red)
                 }
-
-                // // query sphere visualisation
-                // sg {
-                //     Sg.Shader {
-                //         DefaultSurfaces.trafo
-                //         DefaultSurfaces.simpleLighting
-                //     }
-                //     Sg.Active(model.FilteredMesh |> AVal.map Option.isSome)
-                //     let pos = model.FilteredMesh |> AVal.map (function Some(_, p, _) -> p | None -> V3d.Zero)
-                //     Sg.NoEvents
-                //     Primitives.Sphere(pos, 1.0, C4b.Yellow)
-                // }
 
                 // blue stacked boxes
                 sg {
@@ -348,153 +152,11 @@ module View =
                 }
             }
 
-            // Burger menu toggle (mobile)
-            button {
-                Attribute("id", "burger-btn")
-                Class "burger-btn"
-                Dom.OnClick(fun _ ->
-                    env.Emit [ToggleMenu]
-                )
-                div { Class "burger-line" }
-                div { Class "burger-line" }
-                div { Class "burger-line" }
-            }
-
-            // HUD overlay — pure-CSS tabs
-            div {
-                Class "tabs"
-                model.MenuOpen |> AVal.map (fun o ->
-                    if o then Some (Class "tabs-open")
-                    else None
-                )
-
-                div {
-                    Class "tab-labels"
-                    label {
-                        input {
-                            Attribute("type",    "radio")
-                            Attribute("name",    "hud-tabs")
-                            Attribute("id",      "hud-tab1")
-                            Attribute("checked", "checked")
-                        }
-                        "Scene"
-                    }
-                    label {
-                        input {
-                            Attribute("type", "radio")
-                            Attribute("name", "hud-tabs")
-                            Attribute("id",   "hud-tab2")
-                        }
-                        "Info"
-                    }
-                    label {
-                        input {
-                            Attribute("type", "radio")
-                            Attribute("name", "hud-tabs")
-                            Attribute("id",   "hud-tab3")
-                        }
-                        "Settings"
-                    }
-                }
-
-                div {
-                    Class "tab-panels"
-
-                    // ── Tab 1: Scene ──────────────────────────────────
-                    div {
-                        Class "tab-panel"
-                        Attribute("id", "hud-panel1")
-
-                        h1 {
-                            "Counter: "
-                            model.Value |> AVal.map string
-                        }
-                        button {
-                            "+"
-                            Dom.OnClick(fun _ -> env.Emit [Increment])
-                        }
-                        button {
-                            "-"
-                            Dom.OnClick(fun _ -> env.Emit [Decrement])
-                        }
-                        button {
-                            "Clear Filter"
-                            Dom.OnClick(fun _ -> env.Emit [ClearFilteredMesh])
-                        }
-                        h2 {
-                            model.Hover |> AVal.map (function
-                                | Some p -> "Hover: " + p.ToString("0.00")
-                                | None   -> "Hover: none"
-                            )
-                        }
-
-                        // mesh toggles
-                        h3 { "Meshes" }
-                        model.MeshNames |> AList.map (fun name ->
-                            let isVis =
-                                model.MeshVisible
-                                |> AVal.map (fun m -> Map.tryFind name m |> Option.defaultValue true)
-                            div {
-                                label {
-                                    input {
-                                        Attribute("type", "checkbox")
-                                        isVis |> AVal.map (fun v ->
-                                            if v then Some (Attribute("checked", "checked"))
-                                            else None
-                                        )
-                                        Dom.OnClick(fun _ ->
-                                            let current = AVal.force isVis
-                                            env.Emit [SetVisible(name, not current)]
-                                        )
-                                    }
-                                    " " + name
-                                }
-                            }
-                        )
-
-                        ul {
-                            li { "ctrl+click or long-press to filter mesh" }
-                            li { "double-click to focus camera" }
-                        }
-                    }
-
-                    // ── Tab 2: Info ───────────────────────────────────
-                    div {
-                        Class "tab-panel"
-                        Attribute("id", "hud-panel2")
-
-                        h1 { "Info" }
-                        p { "Aardvark.Dom WebAssembly scaffold." }
-                        p { "Elm-style architecture: Model / Update / View." }
-                        p { "Rendering via WebGL with an orbit camera." }
-                    }
-
-                    // ── Tab 3: Settings ───────────────────────────────
-                    div {
-                        Class "tab-panel"
-                        Attribute("id", "hud-panel3")
-
-                        h1 { "Settings" }
-                        p { "Nothing to configure yet." }
-                    }
-                }
-            }
-
-            // on-screen debug log
-            div {
-                Style [
-                    Position "fixed"; Bottom "0"; Left "0"; Right "0"
-                    MaxHeight "30vh"; OverflowY "auto"
-                    Background "rgba(0,0,0,0.8)"; Color "#0f0"
-                    FontFamily "monospace"; FontSize "11px"
-                    Padding "4px 8px"; PointerEvents "none"
-                    ZIndex 9999; StyleProperty("white-space", "pre-wrap")
-                ]
-                model.DebugLog |> AList.map (fun line ->
-                    div { line }
-                )
-            }
+            Gui.burgerButton env
+            Gui.hudTabs env model
+            Gui.debugLog model
         }
+
 
 module App =
     let app =

@@ -23,6 +23,9 @@
     <Compile Include="Model.g.fs" />
     <Compile Include="Shader.fs" />
     <Compile Include="Update.fs" />
+    <Compile Include="MeshView.fs" />
+    <Compile Include="Interactions.fs" />
+    <Compile Include="Gui.fs" />
     <Compile Include="View.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
